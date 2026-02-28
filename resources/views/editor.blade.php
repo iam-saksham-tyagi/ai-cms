@@ -28,10 +28,26 @@
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
         #save-btn:hover { background-color: #1d4ed8; }
+
+        #back-btn {
+            position: absolute;
+            top: 15px;
+            left: 145px;
+            z-index: 100;
+            padding: 10px 16px;
+            background-color: #111827;
+            color: white;
+            border-radius: 5px;
+            text-decoration: none;
+            font-weight: 600;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        #back-btn:hover { background-color: #1f2937; }
     </style>
 </head>
 <body>
     <button id="save-btn" onclick="saveContent()">💾 Save Page</button>
+    <a id="back-btn" href="/">← Dashboard</a>
     <div style="position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 100; background: white; padding: 10px; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); display: flex; gap: 10px; width: 600px;">
         <input type="text" id="ai-prompt" placeholder="E.g., Build a dark mode pricing table with 3 tiers..." style="flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 4px; outline: none; color: black;">
         <button id="ai-btn" onclick="generateAI()" style="background: #a855f7; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; transition: 0.2s;">✨ Generate UI</button>
@@ -71,7 +87,7 @@
             const css = editor.getCss();
             const components = JSON.stringify(editor.getComponents());
 
-            fetch('/save-page', {
+            fetch('/save-page/{{ $page->id }}', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

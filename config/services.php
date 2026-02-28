@@ -35,9 +35,13 @@ return [
         ],
     ],
 
-    'gemini' => [
-        'key' => env('GEMINI_API_KEY'),
-        'model' => env('GEMINI_MODEL', 'gemini-2.5-flash-lite'),
+    'groq' => [
+        'key' => env('GROQ_API_KEY'),
+        'model' => env('GROQ_MODEL', 'moonshotai/kimi-k2-instruct-0905'),
+        'fallback_models' => array_values(array_filter(array_map('trim', explode(',', env(
+            'GROQ_FALLBACK_MODELS',
+            'meta-llama/llama-4-maverick-17b-128e-instruct,meta-llama/llama-4-scout-17b-16e-instruct,llama-3.3-70b-versatile,llama-3.1-8b-instant'
+        ))))),
     ],
 
 ];
