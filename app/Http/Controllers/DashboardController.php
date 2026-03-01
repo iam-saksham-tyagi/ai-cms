@@ -47,4 +47,11 @@ class DashboardController extends Controller
 
         return redirect('/')->with('status', 'Project deleted successfully.');
     }
+
+    public function live($id)
+    {
+        $project = Page::findOrFail($id);
+
+        return view('site', ['project' => $project]);
+    }
 }

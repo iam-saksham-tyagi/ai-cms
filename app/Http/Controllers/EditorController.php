@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Http\Request;
 use App\Models\Page;
+use DOMDocument;
+use DOMElement;
 
 class EditorController extends Controller
 {
@@ -28,171 +30,363 @@ class EditorController extends Controller
         return response()->json(['status' => 'success', 'message' => 'Page saved successfully!']);
     }
     public function generate(Request $request)
-{
-    $prompt = $request->input('prompt');
-    $rawHtml = $request->input('existing_html', '');
+    {
+        $prompt = trim((string) $request->input('prompt', ''));
+        $existingHtml = (string) $request->input('existing_html', '');
+        $existingCss = (string) $request->input('existing_css', '');
+        $selectedHtml = (string) $request->input('selected_html', '');
 
-    $cleanHtml = preg_replace('/<svg\b[^>]*>.*?<\/svg>/is', '', $rawHtml);
-    $cleanHtml = preg_replace('/src="data:image\/[^"]+;base64,[^"]*"/i', 'src="..."', $cleanHtml);
+        if ($prompt === '') {
+            return response()->json([
+                'message' => 'Type a prompt first.',
+                'html' => $existingHtml,
+            ], 422);
+        }
 
-    if (strlen($cleanHtml) > 6000) {
-        $cleanHtml = "\n...[TRUNCATED]\n" . substr($cleanHtml, -6000);
-    }
+        if (!trim($existingHtml)) {
+            return response()->json([
+                'message' => 'Current page HTML is empty, so there is nothing to edit yet.',
+                'html' => $existingHtml,
+            ], 422);
+        }
 
-        $hasExistingHtml = trim($cleanHtml) !== '';
+        $apiKey = config('services.groq.key');
+        $primaryModel = config('services.groq.model', 'moonshotai/kimi-k2-instruct-0905');
+        $fallbackModels = config('services.groq.fallback_models', []);
+        $models = array_values(array_unique(array_filter(array_merge([$primaryModel], $fallbackModels))));
 
-        $editKeywords = ['change', 'edit', 'update', 'modify', 'replace', 'remove', 'delete', 'color', 'text', 'size', 'padding', 'margin', 'font', 'align', 'hide'];
-        $isEditRequest = $hasExistingHtml && preg_match('/\b(' . implode('|', $editKeywords) . ')\b/i', $prompt);
-    
-    $apiKey = config('services.groq.key');
-    $primaryModel = config('services.groq.model', 'moonshotai/kimi-k2-instruct-0905');
-    $fallbackModels = config('services.groq.fallback_models', []);
-    $models = array_values(array_unique(array_filter(array_merge([$primaryModel], $fallbackModels))));
+        if (!$apiKey) {
+            return response()->json([
+                'message' => 'Missing GROQ_API_KEY in your environment.',
+                'html' => $existingHtml,
+            ], 500);
+        }
 
-    if (!$apiKey) {
-        return response()->json([
-            'html' => '<div class="p-4 bg-red-100 text-red-700">Missing GROQ_API_KEY in your environment.</div>'
-        ], 500);
-    }
+        $focusBlock = trim($selectedHtml)
+            ? "FOCUS AREA (if relevant, prioritize edits here first):\n{$selectedHtml}\n"
+            : '';
 
-    // Designer mode instruction: keep full live-canvas HTML while applying requested updates.
-    $instruction = "You are an Expert UI/UX Designer.
-    1. You are modifying a live canvas. ALWAYS return the FULL HTML containing the untouched EXISTING HTML plus requested updates.
-    2. For change/edit/delete requests, modify only the targeted parts and keep all unrelated structure/content unchanged.
-    3. For add requests, append or insert complete modern components using Tailwind CSS.
-    4. Build top-class premium UI: polished visual hierarchy, balanced whitespace, refined typography scale, consistent spacing rhythm, and clean responsive layouts.
-    5. Use production-quality component styling (cards, buttons, badges, inputs, navbars, heroes, sections) with strong contrast and clear affordances.
-    5. If adding an image, ALWAYS use a real placeholder src (for example: https://placehold.co/600x400 or https://picsum.photos/600/400). Never leave src blank.
-    6. Return ONLY raw HTML elements. No markdown code fences or explanation text.
-    7. Strictly forbidden in output: <!DOCTYPE html>, <html>, <head>, <style>, and <body> tags.
+        $isComponentEdit = trim($selectedHtml) !== '';
+        $outputScopeRule = $isComponentEdit
+            ? "OUTPUT SCOPE: Return ONLY the updated HTML for the selected component (focus area), not the entire page."
+            : "OUTPUT SCOPE: Return the updated HTML for the full page content.";
 
-    EXISTING HTML:
-    {$cleanHtml}";
+        $instruction = "You are an Expert Frontend Developer editing a specific selected HTML component. Your ONLY job is to produce production-quality layout improvements while preserving structure.
 
-    $strictRetryInstruction = "You previously regenerated content. Fix this now.
-    Apply ONLY the user's requested edit to the EXISTING HTML below.
-    Preserve all other elements, text, and structure exactly.
-    Allowed changes: only what the user explicitly requested (e.g., color change, delete one element, class update).
-    Forbidden: rewriting the component, redesigning layout, adding unrelated sections, full webpage tags, markdown.
-    Return only the final raw edited HTML snippet.";
+    STRICT RULES:
+    1) Return ONLY raw valid HTML. Never return markdown, code fences, JSON, explanations, or comments.
+    2) Preserve the exact DOM hierarchy, tag order, IDs, links, images, child elements, and nested wrappers unless the user explicitly says 'delete', 'remove', or 'hide'.
+    3) Prefer targeted edits. Do not rewrite the whole component when a small class/text change solves the request.
+    4) For requests like 'clean', 'modernize', or 'make responsive', use Tailwind classes only (layout, spacing, typography, responsive breakpoints, alignment, sizing).
+    5) Preserve existing content and meaning. Only change text copy when the user explicitly asks for text/content changes.
+    6) Keep all interactive elements intact (buttons, anchors, forms, inputs). Never drop href/src/alt/name/value/aria attributes unless explicitly requested.
+    7) Maintain semantic correctness: headings stay headings, lists stay lists, buttons stay buttons, links stay links.
+    8) Ensure responsive behavior with mobile-first classes: use sensible `sm:`, `md:`, `lg:` adjustments for spacing, grid/flex, and typography when relevant.
+    9) Improve visual consistency using Tailwind scale values (e.g., spacing like `p-4`, `px-6`, `gap-4`; radius like `rounded-lg`; shadows and borders where appropriate).
+    10) Keep class naming clean: remove contradictory or duplicate utility classes when editing, but do not remove required structural classes.
+    11) Do not add inline styles, custom CSS, `<style>` tags, `<script>` tags, or external libraries.
+    12) Preserve accessibility: keep alt text, labels, and readable contrast classes where possible; do not remove accessibility attributes.
+    13) If a selected block is provided, prioritize edits inside that block first while still preserving the full HTML structure.
+    14) If the user request conflicts with these rules, follow the user intent with the safest minimal change and still preserve structure where possible.
 
-    try {
-        $requestGroq = function (string $instructionText) use ($prompt, $apiKey, $models) {
-            $requestBody = [
-                'messages' => [
-                    ['role' => 'user', 'content' => $instructionText . "\n\nUser Request: " . $prompt],
-                ],
-                'model' => $models[0] ?? 'moonshotai/kimi-k2-instruct-0905',
-                'temperature' => 0.1,
-            ];
+    OUTPUT CONTRACT:
+    - Output must be only the final updated raw HTML fragment.
+    - No preface, no explanation, no markdown.
+    {$outputScopeRule}
 
-            $errors = [];
+    REFERENCE CONTEXT (for grounding; do not echo this text):
+    {$focusBlock}
+    CURRENT PAGE HTML:
+    {$existingHtml}
 
-            foreach ($models as $modelName) {
-                $requestBody['model'] = $modelName;
-                $url = 'https://api.groq.com/openai/v1/chat/completions';
+    CURRENT PAGE CSS:
+    {$existingCss}";
 
-                $response = Http::withHeaders([
-                    'Content-Type' => 'application/json',
-                    'Authorization' => "Bearer {$apiKey}",
-                ])->post($url, $requestBody);
+        try {
+            $requestGroq = function (string $instructionText) use ($prompt, $apiKey, $models) {
+                $requestBody = [
+                    'messages' => [
+                        ['role' => 'user', 'content' => $instructionText . "\n\nUser Request: " . $prompt],
+                    ],
+                    'model' => $models[0] ?? 'moonshotai/kimi-k2-instruct-0905',
+                    'temperature' => 0.1,
+                ];
 
-                if ($response->ok()) {
-                    return [
-                        'response' => $response,
+                $errors = [];
+
+                foreach ($models as $modelName) {
+                    $requestBody['model'] = $modelName;
+                    $url = 'https://api.groq.com/openai/v1/chat/completions';
+
+                    $response = Http::withHeaders([
+                        'Content-Type' => 'application/json',
+                        'Authorization' => "Bearer {$apiKey}",
+                    ])->post($url, $requestBody);
+
+                    if ($response->ok()) {
+                        return [
+                            'response' => $response,
+                            'model' => $modelName,
+                            'errors' => $errors,
+                        ];
+                    }
+
+                    $errors[] = [
                         'model' => $modelName,
-                        'errors' => $errors,
+                        'status' => $response->status(),
+                        'message' => $response->json()['error']['message'] ?? 'Unknown API Error',
                     ];
                 }
 
-                $errors[] = [
-                    'model' => $modelName,
-                    'status' => $response->status(),
-                    'message' => $response->json()['error']['message'] ?? 'Unknown API Error',
+                return [
+                    'response' => null,
+                    'model' => null,
+                    'errors' => $errors,
                 ];
+            };
+
+            $attempt = $requestGroq($instruction);
+            $response = $attempt['response'];
+
+            if (!$response) {
+                $lastError = end($attempt['errors']);
+                $status = $lastError['status'] ?? 500;
+                $message = $lastError['message'] ?? 'Unknown API Error';
+                $triedModels = implode(', ', array_column($attempt['errors'], 'model'));
+
+                return response()->json([
+                    'message' => "Groq Error ({$status}): {$message}. Tried models: {$triedModels}",
+                    'html' => $existingHtml,
+                    'css' => $existingCss,
+                ], 502);
             }
 
-            return [
-                'response' => null,
-                'model' => null,
-                'errors' => $errors,
-            ];
-        };
+            $data = $response->json();
+            $aiContent = $data['choices'][0]['message']['content'] ?? null;
 
-        $attempt = $requestGroq($instruction);
-        $response = $attempt['response'];
+            if (!$aiContent) {
+                return response()->json([
+                    'message' => 'AI reached but no content returned.',
+                    'html' => $existingHtml,
+                    'css' => $existingCss,
+                ], 502);
+            }
 
-        if (!$response) {
-            $lastError = end($attempt['errors']);
-            $status = $lastError['status'] ?? 500;
-            $message = $lastError['message'] ?? 'Unknown API Error';
-            $triedModels = implode(', ', array_column($attempt['errors'], 'model'));
+            $cleanAiContent = preg_replace('/```(?:json|html|css)?\s*/i', '', (string) $aiContent);
+            $cleanAiContent = preg_replace('/```/', '', (string) $cleanAiContent);
+            $cleanAiContent = trim((string) $cleanAiContent);
+            $attributePayload = json_decode($cleanAiContent, true);
+
+            if (is_array($attributePayload) && isset($attributePayload['attributes']) && is_array($attributePayload['attributes'])) {
+                return response()->json([
+                    'html' => json_encode(['attributes' => $attributePayload['attributes']]),
+                    'css' => $existingCss,
+                ]);
+            }
+
+            [$aiHtml, $aiCss] = $this->parseAiHtmlCssPayload($aiContent, $existingCss);
+
+            if (!$aiHtml) {
+                return response()->json([
+                    'message' => 'AI returned invalid payload. Original layout preserved.',
+                    'html' => $existingHtml,
+                    'css' => $existingCss,
+                ], 422);
+            }
+
+            $originalForSafetyCheck = $isComponentEdit ? $selectedHtml : $existingHtml;
+            [$isSafe, $safetyMessage] = $this->passesLayoutSafetyChecks($originalForSafetyCheck, $aiHtml, $prompt);
+            if (!$isSafe) {
+                return response()->json([
+                    'message' => $safetyMessage,
+                    'html' => $existingHtml,
+                    'css' => $existingCss,
+                ], 422);
+            }
 
             return response()->json([
-                'html' => "<div class='p-4 bg-red-100 text-red-600'>Groq Error ({$status}): {$message}. Tried models: {$triedModels}</div>",
+                'html' => $aiHtml,
+                'css' => $aiCss,
             ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'System Crash: ' . $e->getMessage(),
+                'html' => $existingHtml,
+                'css' => $existingCss,
+            ], 500);
+        }
+    }
+
+    private function parseAiHtmlCssPayload(string $content, string $fallbackCss): array
+    {
+        $clean = preg_replace('/```(?:json|html|css)?\s*/i', '', $content);
+        $clean = preg_replace('/```/', '', (string) $clean);
+        $clean = trim((string) $clean);
+
+        $decoded = json_decode($clean, true);
+        if (is_array($decoded) && isset($decoded['html'])) {
+            $html = trim((string) ($decoded['html'] ?? ''));
+            $css = (string) ($decoded['css'] ?? '');
+
+            [$htmlFromStyle, $cssFromStyle] = $this->extractInlineStyleBlocks($html);
+            $html = $htmlFromStyle;
+            if (trim($css) === '' && trim($cssFromStyle) !== '') {
+                $css = $cssFromStyle;
+            }
+            if (trim($css) === '') {
+                $css = $fallbackCss;
+            }
+
+            return [$html, $css];
         }
 
-        $data = $response->json();
-        $aiHtml = $data['choices'][0]['message']['content'] ?? null;
+        if (preg_match('/\{[\s\S]*\}/', $clean, $matches)) {
+            $decoded = json_decode($matches[0], true);
+            if (is_array($decoded) && isset($decoded['html'])) {
+                $html = trim((string) ($decoded['html'] ?? ''));
+                $css = (string) ($decoded['css'] ?? '');
 
-        if (!$aiHtml) {
-            return response()->json(['html' => '<div class="p-4 bg-yellow-100 text-yellow-700">AI reached but no content returned.</div>']);
+                [$htmlFromStyle, $cssFromStyle] = $this->extractInlineStyleBlocks($html);
+                $html = $htmlFromStyle;
+                if (trim($css) === '' && trim($cssFromStyle) !== '') {
+                    $css = $cssFromStyle;
+                }
+                if (trim($css) === '') {
+                    $css = $fallbackCss;
+                }
+
+                return [$html, $css];
+            }
         }
 
-        // If a full page is returned, extract only the body inner HTML.
-        if (preg_match('/<body\b[^>]*>(.*?)<\/body>/is', $aiHtml, $matches)) {
-            $aiHtml = $matches[1];
+        [$htmlWithoutStyle, $extractedCss] = $this->extractInlineStyleBlocks($clean);
+        $finalCss = trim($extractedCss) !== '' ? $extractedCss : $fallbackCss;
+
+        return [$htmlWithoutStyle, $finalCss];
+    }
+
+    private function extractInlineStyleBlocks(string $html): array
+    {
+        $styles = [];
+        $htmlWithoutStyles = preg_replace_callback('/<style\b[^>]*>(.*?)<\/style>/is', function ($matches) use (&$styles) {
+            $styleContent = trim((string) ($matches[1] ?? ''));
+            if ($styleContent !== '') {
+                $styles[] = $styleContent;
+            }
+
+            return '';
+        }, $html);
+
+        $htmlWithoutStyles = trim((string) $htmlWithoutStyles);
+        $combinedCss = trim(implode("\n\n", $styles));
+
+        return [$htmlWithoutStyles, $combinedCss];
+    }
+
+    private function passesLayoutSafetyChecks(string $originalHtml, string $updatedHtml, string $prompt): array
+    {
+        $originalBody = $this->extractBodyElement($originalHtml);
+        $updatedBody = $this->extractBodyElement($updatedHtml);
+
+        if (!$originalBody || !$updatedBody) {
+            return [false, 'AI response is invalid HTML. Original layout preserved.'];
         }
 
-        // Strip markdown fences like ```html ... ```.
-        $aiHtml = preg_replace('/```(?:html)?\s*/i', '', $aiHtml);
-        $aiHtml = preg_replace('/```/', '', $aiHtml);
+        $allowDeletion = $this->isExplicitDeletionPrompt($prompt);
 
-        // Final safety fallback: remove document wrapper tags if still present.
-        $aiHtml = preg_replace('/<!DOCTYPE[^>]*>/i', '', $aiHtml);
-        $aiHtml = preg_replace('/<\/?html\b[^>]*>/i', '', $aiHtml);
+        $originalCount = $this->countElements($originalBody);
+        $updatedCount = $this->countElements($updatedBody);
 
-        $aiHtml = trim($aiHtml);
+        if (!$allowDeletion && $updatedCount < max(1, (int) floor($originalCount * 0.75))) {
+            return [false, 'AI removed too many elements unexpectedly. Original layout preserved.'];
+        }
 
-        if ($isEditRequest) {
-            $normalizedExisting = preg_replace('/\s+/', ' ', trim($cleanHtml));
-            $normalizedGenerated = preg_replace('/\s+/', ' ', trim($aiHtml));
+        if (!$allowDeletion) {
+            $originalIds = $this->collectIds($originalBody);
+            $updatedIds = $this->collectIds($updatedBody);
+            $missingIds = array_values(array_diff($originalIds, $updatedIds));
 
-            similar_text($normalizedExisting, $normalizedGenerated, $similarityPercent);
+            if (count($missingIds) > 0) {
+                return [false, 'AI removed existing identified elements unexpectedly. Original layout preserved.'];
+            }
 
-            // If the model appears to regenerate instead of edit-in-place, retry once with stricter constraints.
-            if ($similarityPercent < 45) {
-                $retryAttempt = $requestGroq($strictRetryInstruction . "\n\nEXISTING HTML:\n" . $cleanHtml);
-                $retryResponse = $retryAttempt['response'];
+            $originalImages = $this->collectAttributeValues($originalBody, 'img', 'src');
+            $updatedImages = $this->collectAttributeValues($updatedBody, 'img', 'src');
+            $missingImages = array_values(array_diff($originalImages, $updatedImages));
 
-                if ($retryResponse && $retryResponse->ok()) {
-                    $retryData = $retryResponse->json();
-                    $retryHtml = $retryData['choices'][0]['message']['content'] ?? null;
+            if (count($missingImages) > 0) {
+                return [false, 'AI removed existing images unexpectedly. Original layout preserved.'];
+            }
+        }
 
-                    if ($retryHtml) {
-                        if (preg_match('/<body\b[^>]*>(.*?)<\/body>/is', $retryHtml, $matches)) {
-                            $retryHtml = $matches[1];
-                        }
+        return [true, ''];
+    }
 
-                        $retryHtml = preg_replace('/```(?:html)?\s*/i', '', $retryHtml);
-                        $retryHtml = preg_replace('/```/', '', $retryHtml);
-                        $retryHtml = preg_replace('/<!DOCTYPE[^>]*>/i', '', $retryHtml);
-                        $retryHtml = preg_replace('/<\/?html\b[^>]*>/i', '', $retryHtml);
-                        $retryHtml = trim($retryHtml);
+    private function extractBodyElement(string $html): ?DOMElement
+    {
+        if (!trim($html)) {
+            return null;
+        }
 
-                        if ($retryHtml !== '') {
-                            $aiHtml = $retryHtml;
-                        }
-                    }
+        $document = new DOMDocument();
+        libxml_use_internal_errors(true);
+        $loaded = $document->loadHTML(
+            '<!DOCTYPE html><html><body>' . $html . '</body></html>',
+            LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD
+        );
+        libxml_clear_errors();
+
+        if (!$loaded || !$document->documentElement) {
+            return null;
+        }
+
+        $bodyList = $document->getElementsByTagName('body');
+        if ($bodyList->length === 0) {
+            return null;
+        }
+
+        return $bodyList->item(0);
+    }
+
+    private function countElements(DOMElement $container): int
+    {
+        return $container->getElementsByTagName('*')->length;
+    }
+
+    private function collectIds(DOMElement $container): array
+    {
+        $ids = [];
+
+        foreach ($container->getElementsByTagName('*') as $element) {
+            if ($element instanceof DOMElement && $element->hasAttribute('id')) {
+                $id = trim($element->getAttribute('id'));
+                if ($id !== '') {
+                    $ids[] = $id;
                 }
             }
         }
-        
-        return response()->json(['html' => $aiHtml]);
 
-    } catch (\Exception $e) {
-        return response()->json(['html' => '<div class="p-4 bg-red-200">System Crash: ' . $e->getMessage() . '</div>']);
+        return array_values(array_unique($ids));
     }
-}
+
+    private function collectAttributeValues(DOMElement $container, string $tagName, string $attribute): array
+    {
+        $values = [];
+
+        foreach ($container->getElementsByTagName($tagName) as $element) {
+            if ($element instanceof DOMElement && $element->hasAttribute($attribute)) {
+                $value = trim($element->getAttribute($attribute));
+                if ($value !== '') {
+                    $values[] = $value;
+                }
+            }
+        }
+
+        return array_values(array_unique($values));
+    }
+
+    private function isExplicitDeletionPrompt(string $prompt): bool
+    {
+        return (bool) preg_match('/\b(delete|remove|erase|drop|discard)\b/i', $prompt);
+    }
 }

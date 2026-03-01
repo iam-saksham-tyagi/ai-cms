@@ -85,6 +85,8 @@
                                 Open Editor
                             </a>
 
+                            <a href="/p/{{ $project->id }}" target="_blank" class="px-3 py-1.5 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-md transition">Live Site ↗</a>
+
                             <form action="/project/{{ $project->id }}" method="POST" onsubmit="return confirm('Delete this project permanently?');">
                                 @csrf
                                 @method('DELETE')

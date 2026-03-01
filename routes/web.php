@@ -9,6 +9,7 @@ Route::get('/templates', [DashboardController::class, 'templates'])->name('dashb
 Route::get('/settings', [DashboardController::class, 'settings'])->name('dashboard.settings');
 Route::post('/project/create', [DashboardController::class, 'create'])->name('dashboard.create');
 Route::delete('/project/{id}', [DashboardController::class, 'destroy'])->name('dashboard.destroy');
+Route::get('/p/{id}', [DashboardController::class, 'live'])->name('dashboard.live');
 
 Route::get('/editor/{id}', [EditorController::class, 'index'])->name('editor.index');
 Route::post('/save-page/{id}', [EditorController::class, 'save'])->name('editor.save');
