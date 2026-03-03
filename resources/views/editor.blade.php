@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>AI CMS Editor</title>
+    <title>Chetas</title>
     <link rel="stylesheet" href="https://unpkg.com/grapesjs/dist/css/grapes.min.css">
     <script src="https://unpkg.com/grapesjs"></script>
     <script src="https://unpkg.com/grapesjs-blocks-basic"></script>
@@ -50,6 +50,22 @@
             height: calc(100% - 32px) !important;
         }
         .gjs-frame { border: none !important; }
+
+        .gjs-pn-views-container,
+        .gjs-pn-views {
+            right: auto !important;
+            left: 0 !important;
+        }
+
+        .gjs-pn-devices-c {
+            left: auto !important;
+            right: 0 !important;
+        }
+
+        .gjs-cv-canvas {
+            left: 100px !important;
+            width: calc(100% - 132px) !important;
+        }
         
         #action-buttons {
             position: fixed;
@@ -65,6 +81,7 @@
             background-color: #6366f1;
             color: white;
             border: none;
+            place-self: flex-start;
             border-radius: 5px;
             cursor: pointer;
             font-weight: bold;
@@ -86,19 +103,29 @@
 
         #ai-controls {
             position: fixed;
+            width:50%;
             bottom: 20px;
-            left: 20px;
-            right: 220px;
+
+            justify-self: center;
             z-index: 100;
-            background: white;
+            background: rgba(99, 144, 204, 0.55);
             padding: 10px;
             border-radius: 8px;
             box-shadow: 0 10px 25px rgba(0,0,0,0.3);
             display: flex;
             gap: 10px;
         }
+        #ai-btn:hover, #ai-btn:focus{
+            transform:scale(1.05);
+        }
+        
 
         @media (max-width: 960px) {
+            .gjs-cv-canvas {
+                left: 0 !important;
+                width: calc(100% - 32px) !important;
+            }
+
             #ai-controls {
                 right: 20px;
                 bottom: 72px;
@@ -111,13 +138,16 @@
     </style>
 </head>
 <body>
+    <div style="background-color: #0f172a;display: flex;flex-direction: row;padding: 2px 20px;top: 0;left: 0;right: 0;z-index:4;justify-content: center;align-items: center;">
+    <a id="back-btn" style="display:flex;justify-self:left;width:inline-auto;position: absolute;left: 20px;" href="/">← Dashboard</a>
+    <span style="display:flex;flex-direction: column;color: white;justify-content: center;align-items:center;text-align: center;">Chetas - Editor</span>
+    </div>
     <div id="action-buttons">
-        <a id="back-btn" href="/">← Dashboard</a>
-        <button id="save-btn" onclick="saveContent()">💾 Save Page</button>
+        <button id="save-btn" style="place-self: flex-start;" onclick="saveContent()">💾 Save Page</button>
     </div>
     <div id="ai-controls">
         <input type="text" id="ai-prompt" placeholder="E.g., Build a dark mode pricing table with 3 tiers..." style="flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 4px; outline: none; color: black;">
-        <button id="ai-btn" onclick="generateAI()" style="background: #818cf8; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; transition: 0.2s;">✨ Generate UI</button>
+        <button id="ai-btn" onclick="generateAI()" style="background: rgba(200,200,200,0.2);backdrop-filter: blur(8px); color: black;box-shadow: 0 0 8px rgba(0,0,0,0.1),inset 1px 1px 3px rgba(0,0,0,0.04),inset -1px -1px 6px rgba(10,10,10,0.1) ; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; transition: 0.2s;">✨ Generate UI</button>
     </div>
     <div id="gjs" style="height:100vh;"></div>
 
@@ -302,11 +332,12 @@
                     editor.setStyle(data.css);
                 }
                 
-                // Reset the UI
-                promptInput.value = '';
+                // Reset button state
+                btn.style='background: rgba(200,200,200,0.2);backdrop-filter: blur(8px); color: black;box-shadow: 0 0 8px rgba(0,0,0,0.1),inset 1px 1px 3px rgba(0,0,0,0.04),inset -1px -1px 6px rgba(10,10,10,0.1) ; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; transition: 0.2s;';
                 btn.innerText = '✨ Generate UI';
-                btn.style.background = '#818cf8';
                 btn.disabled = false;
+                 //Reset prompt input
+                promptInput.value = '';
             } catch (error) {
                 console.error('Error:', error);
                 btn.innerText = '✨ Generate UI';
