@@ -2,7 +2,8 @@
 
 This is an advanced, AI-driven website builder that combines the pixel-perfect control of drag-and-drop with the generative power of Large Language Models. Build, style, and deploy modern Tailwind CSS landing pages instantly.
 
-![Hero Image - Place a screenshot of your main editor canvas here](./docs/hero-screenshot.png)
+<img width="1366" height="728" alt="image" src="https://github.com/user-attachments/assets/0f57d0f5-ee40-42e4-822e-a3a257ef705d" />
+
 
 ## 🚀 The Vision
 Most AI website builders strip away your control, giving you a black-box result. This platform takes a different approach: **Surgical AI Generation**. 
@@ -27,11 +28,13 @@ Powered by a custom integration of GrapesJS and modern LLM APIs, users can selec
 ## 📸 Interface Preview
 
 ### The Dashboard
-![Dashboard Screenshot - Show your dark mode project list here](./docs/dashboard-screenshot.png)
+<img width="1366" height="728" alt="image" src="https://github.com/user-attachments/assets/d6b8f0d9-ff27-4b76-8d89-95adfed05b73" />
+
 *Manage multiple sites, view live statuses, and access the editor.*
 
 ### The AI Editor
-![Editor Screenshot - Show the AI prompt box over the GrapesJS canvas](./docs/editor-screenshot.png)
+<img width="1363" height="726" alt="image" src="https://github.com/user-attachments/assets/760a6278-6bbd-4940-bc35-633ea430c6b3" />
+
 *Select an element, type a prompt, and watch the UI morph instantly.*
 
 ---
