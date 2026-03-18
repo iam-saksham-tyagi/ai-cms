@@ -1,23 +1,23 @@
-# ⚡️ AI-Powered Visual CMS
+# AI-Powered Visual CMS
 
 This is an advanced, AI-driven website builder that combines the pixel-perfect control of drag-and-drop with the generative power of Large Language Models. Build, style, and deploy modern Tailwind CSS landing pages instantly.
 
 <img width="1366" height="728" alt="image" src="https://github.com/user-attachments/assets/0f57d0f5-ee40-42e4-822e-a3a257ef705d" />
 
 
-## 🚀 The Vision
+## The Vision
 Most AI website builders strip away your control, giving you a black-box result. This platform takes a different approach: **Surgical AI Generation**. 
 
 Powered by a custom integration of GrapesJS and modern LLM APIs, users can select specific DOM elements on the canvas and use natural language to instantly rewrite copy, update Tailwind classes, or generate entirely new UI components—without ever leaving the visual editor.
 
-## ✨ Key Features
+## Key Features
 * **AI Component Generation:** Select any node and prompt the AI to restructure, style, or populate it with content.
 * **Intelligent Safety Net:** Custom JavaScript DOM-diffing prevents the AI from catastrophically deleting your layout if it hallucinates.
 * **Drag & Drop Canvas:** Built on top of a highly customized GrapesJS instance.
 * **Tailwind Native:** Generates and parses utility classes flawlessly.
 * **Instant Preview:** Live, isolated preview environment for generated sites.
 
-## 🛠️ Tech Stack
+## Tech Stack
 * **Backend:** Laravel (PHP)
 * **Frontend Canvas:** GrapesJS, HTML5, Alpine.js
 * **Styling:** Tailwind CSS
